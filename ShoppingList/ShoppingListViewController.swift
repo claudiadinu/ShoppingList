@@ -7,14 +7,11 @@
 
 import UIKit
 import Foundation
-
-struct Item {
-    var name: String
-    var quantity: Int
-    var color: UIColor
-}
+import CoreData
 
 class ShoppingListViewController: UIViewController {
+    
+    let context = (UIApplication.shared.delegate as! AppDelegate).persistentContainer.viewContext
     
     @IBOutlet weak var shoppingListTableView: UITableView!
     
@@ -26,37 +23,22 @@ class ShoppingListViewController: UIViewController {
         shoppingListTableView.delegate = self
         shoppingListTableView.dataSource = self
         
-        navigationItem.leftBarButtonItem = editButtonItem
+        //navigationItem.leftBarButtonItem = editButtonItem
+        shoppingListTableView.register(UINib(nibName: "ItemCell", bundle: .main), forCellReuseIdentifier: "itemCell")
         
-        createData()
+        fetchItems()
     }
     
-    func createData() {
-        let bread = Item(name: "Bread", quantity: 7, color: .red)
-        let chocolate = Item(name: "Chocolate", quantity: 2, color: .brown)
-        let cookies = Item(name: "Cookies", quantity: 4, color: .cyan)
-        let flowers = Item(name: "Flowers", quantity: 5, color: .systemPink)
-        let oil = Item(name: "Oil", quantity: 1, color: .yellow)
-        let milk = Item(name: "Milk", quantity: 3, color: .white)
-        
-        items.append(bread)
-        items.append(chocolate)
-        items.append(cookies)
-        items.append(flowers)
-        items.append(oil)
-        items.append(milk)
-        items.append(bread)
-        items.append(chocolate)
-        items.append(cookies)
-        items.append(flowers)
-        items.append(oil)
-        items.append(milk)
-        items.append(bread)
-        items.append(chocolate)
-        items.append(cookies)
-        items.append(flowers)
-        items.append(oil)
-        items.append(milk)
+    func fetchItems() {
+        do {
+            self.items = try context.fetch(Item.fetchRequest())
+            DispatchQueue.main.async {
+                self.shoppingListTableView.reloadData()
+            }
+        }
+        catch {
+            print("Error while fetching items...")
+        }
     }
     
     @IBAction func addButtonPressed(_ sender: UIBarButtonItem) {
@@ -73,9 +55,17 @@ class ShoppingListViewController: UIViewController {
         }
         alert.addAction(UIAlertAction(title: "Add", style: .default, handler: { (action) in
             if let newName = nameTextField.text, let quantity = quantityTextField.text, let newQuantity = Int(quantity) {
-                let newItem = Item(name: newName, quantity: newQuantity, color: .orange)
-                self.items.append(newItem)
-                self.shoppingListTableView.reloadData()
+                let newItem = Item(context: self.context)
+                newItem.name = newName
+                newItem.quantity = Int64(newQuantity)
+                newItem.color = "orange"
+                do {
+                    try self.context.save()
+                }
+                catch {
+                    print("Error while saving data.")
+                }
+                self.fetchItems()
             }
         }))
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel, handler: nil))
@@ -89,16 +79,13 @@ extension ShoppingListViewController: UITableViewDataSource {
     }
     
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "itemCell", for: indexPath)
-        cell.textLabel?.text = items[indexPath.row].name
-        cell.detailTextLabel?.text = String(items[indexPath.row].quantity)
-        cell.contentView.backgroundColor = items[indexPath.row].color
-//        if indexPath.row % 2 == 0 {
-//            cell.contentView.backgroundColor = .red
-//        }
-//        else {
-//            cell.contentView.backgroundColor = .clear
-//        }
+        let cell = tableView.dequeueReusableCell(withIdentifier: "itemCell", for: indexPath) as! ItemCell
+        cell.nameLabel.text = items[indexPath.row].name
+        cell.quantityLabel.text = String(items[indexPath.row].quantity)
+        cell.contentView.backgroundColor = UIColor.colorWith(name: items[indexPath.row].color ?? "red")
+        cell.delegate = self
+        cell.tableViewReference = shoppingListTableView
+        cell.indexReference = indexPath.row
         return cell
     }
 }
@@ -118,12 +105,28 @@ extension ShoppingListViewController: UITableViewDelegate {
     
     func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCell.EditingStyle, forRowAt indexPath: IndexPath) {
         if editingStyle == .delete {
-            items.remove(at: indexPath.row)
-            shoppingListTableView.deleteRows(at: [indexPath], with: .automatic)
+            let itemToRemove = items[indexPath.row]
+            self.context.delete(itemToRemove)
+            do {
+                try self.context.save()
+            }
+            catch {
+                print("Error while saving data.")
+            }
+            fetchItems()
         }
-        else if editingStyle == .insert {
-            items.append(Item(name: "test", quantity: 1, color: .orange))
-            shoppingListTableView.insertRows(at: [indexPath], with: .automatic)
+    }
+}
+
+extension UIColor {
+
+    static func colorWith(name:String) -> UIColor? {
+        let selector = Selector("\(name)Color")
+        if UIColor.self.responds(to: selector) {
+            let color = UIColor.self.perform(selector).takeUnretainedValue()
+            return (color as? UIColor)
+        } else {
+            return nil
         }
     }
 }
